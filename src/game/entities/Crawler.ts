@@ -8,10 +8,16 @@
  * cycle, tread scroll, and pod arcs never see the crash point.
  */
 import { Assets, Container, Sprite, type Texture, TilingSprite } from "pixi.js";
-import { ARMING_MS, SETTLING_MS, THUMP_BPM } from "../../sim/constants";
+import { ARMING_MS, SETTLING_MS } from "../../sim/constants";
 import type { RoundPhase } from "../../sim/types";
 
-const THUMP_INTERVAL_MS = 60_000 / THUMP_BPM;
+/**
+ * Point in the thump cycle (0..1) where the drill impact lands. TremorGame
+ * fires ShakeSystem pulses (and M6 thump SFX) on this same crossing, so the
+ * felt jolt is sample-locked to the seen slam.
+ */
+export const THUMP_IMPACT_P = 0.8;
+
 const POD_FLIGHT_MS = 1500;
 
 // Local design units: origin = ground contact point under the hull's center.
@@ -114,8 +120,11 @@ export class Crawler {
   /**
    * @param scrollPx world scroll this frame in screen px; treads counter-scroll
    *                 so the track visually grips the passing ground.
+   * @param thumpPhase 0..1 position in the shared thump cycle, owned by
+   *                 TremorGame's oscillator (the TensionDirector may quicken it
+   *                 at HUNTED+); only read while "running".
    */
-  update(nowMs: number, phase: RoundPhase, scrollPx: number): void {
+  update(nowMs: number, phase: RoundPhase, scrollPx: number, thumpPhase: number): void {
     if (phase !== this.prevPhase) {
       this.prevPhase = phase;
       this.phaseAnchorMs = nowMs;
@@ -145,9 +154,11 @@ export class Crawler {
       case "running": {
         // The harvest rhythm; amplitude eases in over the first ~half thump.
         const env = Math.min(1, sincePhase / 600);
-        const p = (sincePhase % THUMP_INTERVAL_MS) / THUMP_INTERVAL_MS;
+        const p = thumpPhase;
         drillOffset = WORK_OFFSET + thumpCurve(p) * env;
-        if (p >= 0.8) hullDip = 2.5 * (1 - (p - 0.8) / 0.2) * env;
+        if (p >= THUMP_IMPACT_P) {
+          hullDip = 2.5 * (1 - (p - THUMP_IMPACT_P) / (1 - THUMP_IMPACT_P)) * env;
+        }
         break;
       }
       case "crashed": {

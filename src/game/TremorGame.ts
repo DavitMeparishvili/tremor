@@ -6,13 +6,17 @@ import {
 } from "pixi.js";
 import { backgroundLoadDeferred, loadBootAssets } from "../assets/manifest";
 import { SHAKE_MAX_PX } from "../sim/constants";
+import { fxRngForRound } from "../sim/outcome";
+import type { RoundPhase } from "../sim/types";
 import { engine, useTremorStore } from "../state/store";
-import { Crawler } from "./entities/Crawler";
+import { Crawler, THUMP_IMPACT_P } from "./entities/Crawler";
 import { Dunes, HORIZON_NEAR } from "./entities/Dunes";
 import { createLayers, type Layers, REFERENCE_HEIGHT } from "./layers";
 import { MultiplierDisplay } from "./systems/MultiplierDisplay";
-
-const SHAKE_DECAY_MS = 700;
+import { RADAR_RADIUS, RadarSystem } from "./systems/RadarSystem";
+import { AMBIENT_SAND_LEVEL, SandSystem } from "./systems/SandSystem";
+import { ShakeSystem } from "./systems/ShakeSystem";
+import { TensionDirector } from "./systems/TensionDirector";
 
 /** Crawler ground speed while harvesting, px/s at the 1080p reference height. */
 const GROUND_SPEED_PXS = 30;
@@ -50,8 +54,28 @@ export class TremorGame {
   /** The real multiplier display (plan M2) — BitmapText, centered, never DOM. */
   private multiplierDisplay!: MultiplierDisplay;
 
-  /** 0..1; shake amplitude is trauma², so pulses hit hard and tail off. */
-  private trauma = 0;
+  // --- M4 tension stack: one director, three consumers (plan §4.4) ---
+  private readonly director = new TensionDirector();
+  private shake!: ShakeSystem;
+  private sand!: SandSystem;
+  private radar!: RadarSystem;
+  /**
+   * Cosmetic RNG stream — reseeded per round from the round spec, shared by
+   * radar and sand. Separate from the outcome stream by construction (golden
+   * rule #1). The boot stream covers the pre-first-round ambient theater.
+   */
+  private fxRng: () => number = fxRngForRound("tremor-boot", 0);
+
+  /**
+   * Shared thump oscillator (0..1). A phase accumulator — not a modulo of
+   * elapsed time — so the TensionDirector quickening the interval at HUNTED+
+   * bends the rhythm without skipping a beat. Crawler drill, shake pulses,
+   * and M6 thump SFX all read this one phase.
+   */
+  private thumpPhase = 0;
+  private prevPhase: RoundPhase | null = null;
+  private phaseAnchorMs = 0;
+
   /** Eased current world scroll speed in px/s at screen scale. */
   private groundSpeed = 0;
   private fpsAccumMs = 0;
@@ -63,8 +87,10 @@ export class TremorGame {
     // Ignore keystrokes typed into BetPanel inputs — only bare canvas shortcuts here.
     const target = e.target as HTMLElement | null;
     if (target && /^(input|textarea|select)$/i.test(target.tagName)) return;
-    // Placeholder trigger until the M4 ShakeSystem/M5 eruption timeline exist.
-    if (e.code === "KeyS" || e.code === "Space") this.triggerShake();
+    // Debug kick: one max-amplitude shake pulse.
+    if (e.code === "KeyS" || e.code === "Space") {
+      this.shake?.pulse(performance.now(), SHAKE_MAX_PX);
+    }
   };
 
   async init(host: HTMLElement): Promise<void> {
@@ -81,11 +107,18 @@ export class TremorGame {
 
     this.layers = createLayers(this.app.stage);
 
-    // SPECS §7 world order: sky, dune layers, then crawler. (worm: M5, sand: M4)
+    // SPECS §7 world order: sky, dune layers, crawler, (worm: M5), sand.
     this.dunes = new Dunes();
     this.dunes.addTo(this.layers.world);
     this.crawler = new Crawler();
     this.layers.world.addChild(this.crawler.view);
+    this.sand = new SandSystem(this.app.renderer);
+    this.layers.world.addChild(this.sand.view);
+
+    this.shake = new ShakeSystem(this.layers.world);
+
+    this.radar = new RadarSystem();
+    this.layers.hud.addChild(this.radar.view);
 
     this.fpsText = new BitmapText({
       text: "-- FPS",
@@ -100,9 +133,15 @@ export class TremorGame {
     this.engineUnsub = engine.on((e) => {
       // Placeholder eruption feedback until the M5 worm timeline exists. Reacts
       // to the crash EVENT — never anticipates the hidden crash point.
-      if (e.type === "crashed") this.triggerShake();
+      if (e.type === "crashed") this.shake.pulse(performance.now(), SHAKE_MAX_PX);
       if (e.type === "cashedOut") this.crawler.ejectPod(performance.now(), e.slot);
       if (e.type === "phaseChanged" && e.phase === "betting") backgroundLoadDeferred();
+      if (e.type === "roundStarted") {
+        // Reseed the cosmetic stream from the round spec (SPECS §4) and wipe
+        // the scope — every round's theater noise is its own replayable stream.
+        this.fxRng = fxRngForRound(e.spec.seed, e.spec.nonce);
+        this.radar.reset();
+      }
     });
     // The engine boots inside BETTING, so the phase event may already be behind us.
     if (useTremorStore.getState().phase === "betting") backgroundLoadDeferred();
@@ -116,11 +155,6 @@ export class TremorGame {
     this.initialized = true;
   }
 
-  /** M4 replaces this with ShakeSystem pulses synced to the crawler thump. */
-  triggerShake(): void {
-    this.trauma = 1;
-  }
-
   private update(ticker: Ticker): void {
     const now = performance.now();
 
@@ -129,27 +163,52 @@ export class TremorGame {
     const m = engine.currentMultiplier();
     useTremorStore.setState({ multiplier: m });
     const state = useTremorStore.getState();
+    const reducedMotion = state.settings.reducedMotion;
+    const running = state.phase === "running";
+    const scale = Math.max(0.5, this.app.screen.height / REFERENCE_HEIGHT);
+
+    if (state.phase !== this.prevPhase) {
+      this.prevPhase = state.phase;
+      this.phaseAnchorMs = now;
+      if (running) this.thumpPhase = 0;
+    }
+
+    // --- tension (plan §3.3): ONE evaluation, every theatrical system reads it.
+    // Input is (m, elapsed, fxRng) — the crash point cannot reach this line.
+    this.director.reducedMotion = reducedMotion;
+    const tension = this.director.evaluate(
+      running ? m : 1,
+      running ? now - this.phaseAnchorMs : 0,
+      this.fxRng,
+    );
+
+    // --- shared thump oscillator; a pulse fires exactly at the drill impact ---
+    let thumpPhase = 0;
+    if (running) {
+      const prev = this.thumpPhase;
+      this.thumpPhase = (prev + ticker.deltaMS / tension.thumpIntervalMs) % 1;
+      const crossedImpact =
+        prev < THUMP_IMPACT_P && (this.thumpPhase >= THUMP_IMPACT_P || this.thumpPhase < prev);
+      if (crossedImpact) this.shake.pulse(now, tension.shakePeak);
+      thumpPhase = this.thumpPhase;
+    }
 
     // --- shake: offsets the `world` container ONLY (golden rule #4) ---
-    this.trauma = Math.max(0, this.trauma - ticker.deltaMS / SHAKE_DECAY_MS);
-    const scale = Math.max(0.5, this.app.screen.height / REFERENCE_HEIGHT);
-    const amp = state.settings.reducedMotion
-      ? 0
-      : SHAKE_MAX_PX * scale * this.trauma * this.trauma;
-    this.layers.world.position.set(
-      amp * Math.sin(now * 0.055),
-      amp * Math.sin(now * 0.047 + 2.1),
-    );
+    this.shake.update(now, scale, reducedMotion);
 
     // --- desert world (plan M3) ---
     // The crawler advances only while harvesting; speed eases in/out so phase
     // changes read as a heavy machine, not a switch.
-    const targetSpeed = state.phase === "running" ? GROUND_SPEED_PXS * scale : 0;
+    const targetSpeed = running ? GROUND_SPEED_PXS * scale : 0;
     this.groundSpeed += (targetSpeed - this.groundSpeed) * Math.min(1, ticker.deltaMS / 400);
     const scrollPx = (this.groundSpeed * ticker.deltaMS) / 1000;
-    this.dunes.update(now, scrollPx, state.settings.reducedMotion);
-    this.crawler.update(now, state.phase, scrollPx);
+    this.dunes.update(now, scrollPx, reducedMotion);
+    this.crawler.update(now, state.phase, scrollPx, thumpPhase);
     this.layers.world.tint = daylightTint(now);
+
+    // --- tension consumers (plan M4) ---
+    this.sand.update(ticker.deltaMS, running ? tension.sandLevel : AMBIENT_SAND_LEVEL, this.fxRng);
+    this.radar.update(now, ticker.deltaMS, tension, state.phase, this.fxRng);
 
     // --- the real multiplier display (plan M2) ---
     this.multiplierDisplay.update(state.phase, m);
@@ -172,6 +231,14 @@ export class TremorGame {
     // strike point sits under the multiplier without hiding behind BetPanel.
     this.crawler.view.scale.set(s);
     this.crawler.view.position.set(w * 0.46, h * HORIZON_NEAR + 26 * s);
+
+    this.sand.layout(w, h, s, this.crawler.view.x, this.crawler.view.y);
+
+    // Radar: top-left corner widget (plan open question #3 — corner HUD for
+    // now). React's HUD column is centered, FPS sits top-right; no overlap.
+    const radarScale = Math.max(0.55, Math.min(1, h / REFERENCE_HEIGHT));
+    const radarMargin = 14 + (RADAR_RADIUS + 4) * radarScale;
+    this.radar.layout(radarMargin, radarMargin, radarScale);
 
     this.fpsText.position.set(w - 12, 10);
     this.multiplierDisplay.layout(w, h);
