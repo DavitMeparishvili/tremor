@@ -11,10 +11,18 @@ import type { RoundPhase } from "../sim/types";
 import { engine, useTremorStore } from "../state/store";
 import { Crawler, THUMP_IMPACT_P } from "./entities/Crawler";
 import { Dunes, HORIZON_NEAR } from "./entities/Dunes";
+import { type EruptionHooks, Worm } from "./entities/Worm";
 import { createLayers, type Layers, REFERENCE_HEIGHT } from "./layers";
+import { CrashFxSystem } from "./systems/CrashFxSystem";
 import { MultiplierDisplay } from "./systems/MultiplierDisplay";
 import { RADAR_RADIUS, RadarSystem } from "./systems/RadarSystem";
-import { AMBIENT_SAND_LEVEL, SandSystem } from "./systems/SandSystem";
+import {
+  AMBIENT_SAND_LEVEL,
+  DUST_TINT,
+  GEYSER_TINT,
+  RIPPLE_TINT,
+  SandSystem,
+} from "./systems/SandSystem";
 import { ShakeSystem } from "./systems/ShakeSystem";
 import { TensionDirector } from "./systems/TensionDirector";
 
@@ -30,6 +38,19 @@ const GROUND_SPEED_PXS = 30;
  */
 const DAY_CYCLE_MS = 540_000;
 const DUSK_TINT = { r: 0xe8, g: 0xbf, b: 0xa4 };
+
+/**
+ * Hit-stop (plan M5): `ticker.speed` scales `deltaMS` — every deltaMS-driven
+ * visual (worm timeline, sand, scroll) slows — while the sim engine ticks on
+ * raw `performance.now()`, so round cadence never stretches. Timed here with
+ * unscaled wall time for the same reason.
+ */
+const HIT_STOP_SPEED = 0.15;
+const HIT_STOP_HOLD_MS = 180;
+const HIT_STOP_RAMP_MS = 220;
+
+/** Crawler fade-in during SETTLING after being swallowed (a fresh unit deploys). */
+const CRAWLER_RESPAWN_MS = 700;
 
 function daylightTint(nowMs: number): number {
   const t = 0.5 - 0.5 * Math.cos((nowMs / DAY_CYCLE_MS) * Math.PI * 2);
@@ -59,6 +80,12 @@ export class TremorGame {
   private shake!: ShakeSystem;
   private sand!: SandSystem;
   private radar!: RadarSystem;
+
+  // --- M5 eruption stack ---
+  private worm!: Worm;
+  private crashFx!: CrashFxSystem;
+  /** Wall-time start of the active hit-stop, or null. */
+  private hitStopStartMs: number | null = null;
   /**
    * Cosmetic RNG stream — reseeded per round from the round spec, shared by
    * radar and sand. Separate from the outcome stream by construction (golden
@@ -107,15 +134,20 @@ export class TremorGame {
 
     this.layers = createLayers(this.app.stage);
 
-    // SPECS §7 world order: sky, dune layers, crawler, (worm: M5), sand.
+    // SPECS §7 world order: sky, dune layers, crawler, worm, sand.
     this.dunes = new Dunes();
     this.dunes.addTo(this.layers.world);
     this.crawler = new Crawler();
     this.layers.world.addChild(this.crawler.view);
+    this.worm = new Worm();
+    this.layers.world.addChild(this.worm.view);
     this.sand = new SandSystem(this.app.renderer);
     this.layers.world.addChild(this.sand.view);
 
     this.shake = new ShakeSystem(this.layers.world);
+
+    this.crashFx = new CrashFxSystem();
+    this.layers.fx.addChild(this.crashFx.view);
 
     this.radar = new RadarSystem();
     this.layers.hud.addChild(this.radar.view);
@@ -131,9 +163,8 @@ export class TremorGame {
     this.layers.hud.addChild(this.multiplierDisplay.view);
 
     this.engineUnsub = engine.on((e) => {
-      // Placeholder eruption feedback until the M5 worm timeline exists. Reacts
-      // to the crash EVENT — never anticipates the hidden crash point.
-      if (e.type === "crashed") this.shake.pulse(performance.now(), SHAKE_MAX_PX);
+      // The eruption reacts to the crash EVENT — never anticipates the hidden crash point.
+      if (e.type === "crashed") this.beginEruption();
       if (e.type === "cashedOut") this.crawler.ejectPod(performance.now(), e.slot);
       if (e.type === "phaseChanged" && e.phase === "betting") backgroundLoadDeferred();
       if (e.type === "roundStarted") {
@@ -141,6 +172,7 @@ export class TremorGame {
         // the scope — every round's theater noise is its own replayable stream.
         this.fxRng = fxRngForRound(e.spec.seed, e.spec.nonce);
         this.radar.reset();
+        this.worm.abort();
       }
     });
     // The engine boots inside BETTING, so the phase event may already be behind us.
@@ -157,6 +189,20 @@ export class TremorGame {
 
   private update(ticker: Ticker): void {
     const now = performance.now();
+
+    // --- hit-stop (plan M5): hold at slow-mo, then ramp back — wall-time driven ---
+    if (this.hitStopStartMs !== null) {
+      const t = now - this.hitStopStartMs;
+      if (t < HIT_STOP_HOLD_MS) {
+        this.app.ticker.speed = HIT_STOP_SPEED;
+      } else if (t < HIT_STOP_HOLD_MS + HIT_STOP_RAMP_MS) {
+        const r = (t - HIT_STOP_HOLD_MS) / HIT_STOP_RAMP_MS;
+        this.app.ticker.speed = HIT_STOP_SPEED + (1 - HIT_STOP_SPEED) * r;
+      } else {
+        this.app.ticker.speed = 1;
+        this.hitStopStartMs = null;
+      }
+    }
 
     // --- sim first (plan §3.3): engine advances, store gets the transient m ---
     engine.tick(now);
@@ -206,9 +252,23 @@ export class TremorGame {
     this.crawler.update(now, state.phase, scrollPx, thumpPhase);
     this.layers.world.tint = daylightTint(now);
 
+    // --- crawler respawn (plan M5): swallowed unit fades back in during SETTLING ---
+    if (!this.crawler.view.visible && (state.phase === "settling" || state.phase === "betting")) {
+      this.crawler.view.visible = true;
+      this.crawler.view.alpha = 0;
+    }
+    if (this.crawler.view.visible && this.crawler.view.alpha < 1) {
+      this.crawler.view.alpha = Math.min(1, this.crawler.view.alpha + ticker.deltaMS / CRAWLER_RESPAWN_MS);
+    }
+
     // --- tension consumers (plan M4) ---
     this.sand.update(ticker.deltaMS, running ? tension.sandLevel : AMBIENT_SAND_LEVEL, this.fxRng);
     this.radar.update(now, ticker.deltaMS, tension, state.phase, this.fxRng);
+
+    // --- the eruption (plan M5): deltaMS-advanced so the hit-stop slows it;
+    // crash FX run on UNSCALED time so the flash decays at real speed ---
+    this.worm.advance(ticker.deltaMS);
+    this.crashFx.update(ticker.elapsedMS);
 
     // --- the real multiplier display (plan M2) ---
     this.multiplierDisplay.update(state.phase, m);
@@ -219,6 +279,87 @@ export class TremorGame {
       this.fpsAccumMs = 0;
       this.fpsText.text = `${Math.round(ticker.FPS)} FPS`;
     }
+  }
+
+  /**
+   * The crash moment (plan M5). Wires the worm's timeline beats onto the
+   * systems — hooks keep systems decoupled per SPECS §8. All randomness below
+   * is `fxRng` (cosmetic stream); everything reacts to the already-fired crash.
+   */
+  private beginEruption(): void {
+    const now = performance.now();
+    const { height } = this.app.screen;
+    const s = Math.max(0.5, height / REFERENCE_HEIGHT);
+    const crawlerX = this.crawler.view.x;
+    const groundY = this.crawler.view.y;
+    const breachX = crawlerX + 200 * s;
+    const fxRng = this.fxRng;
+    const reducedMotion = useTremorStore.getState().settings.reducedMotion;
+
+    const hooks: EruptionHooks = {
+      pulse: (ampPx) => this.shake.pulse(performance.now(), ampPx),
+      ripple: () =>
+        this.sand.burst(
+          {
+            x: breachX, y: groundY, count: 120,
+            angle: -Math.PI / 2, spread: 0.9,
+            speedMin: 60 * s, speedMax: 260 * s, gravity: 520 * s,
+            lifeMinMs: 350, lifeMaxMs: 850,
+            alphaMin: 0.25, alphaMax: 0.5, tint: RIPPLE_TINT, radius: 70 * s,
+          },
+          fxRng,
+        ),
+      breach: () => {
+        this.sand.burst(
+          {
+            x: breachX, y: groundY, count: 3200,
+            angle: -Math.PI / 2, spread: 0.55,
+            speedMin: 260 * s, speedMax: 950 * s, gravity: 620 * s,
+            lifeMinMs: 700, lifeMaxMs: 1500,
+            alphaMin: 0.35, alphaMax: 0.7, tint: GEYSER_TINT, radius: 90 * s,
+          },
+          fxRng,
+        );
+        this.crashFx.triggerFlash(reducedMotion ? 0.25 : 0.9);
+        this.crashFx.triggerShockwave(breachX, groundY, s);
+        this.shake.pulse(performance.now(), SHAKE_MAX_PX);
+        if (!reducedMotion) this.hitStopStartMs = performance.now();
+      },
+      swallow: () => {
+        this.sand.burst(
+          {
+            x: crawlerX, y: groundY, count: 1300,
+            angle: -Math.PI / 2, spread: 0.8,
+            speedMin: 140 * s, speedMax: 520 * s, gravity: 620 * s,
+            lifeMinMs: 500, lifeMaxMs: 1100,
+            alphaMin: 0.3, alphaMax: 0.6, tint: RIPPLE_TINT, radius: 80 * s,
+          },
+          fxRng,
+        );
+        this.crawler.view.visible = false;
+      },
+      dust: () =>
+        this.sand.burst(
+          {
+            x: (breachX + crawlerX) / 2, y: groundY, count: 1900,
+            angle: -Math.PI / 2, spread: 1.4,
+            speedMin: 30 * s, speedMax: 150 * s, gravity: 30 * s,
+            lifeMinMs: 1600, lifeMaxMs: 3200,
+            alphaMin: 0.12, alphaMax: 0.3, tint: DUST_TINT, radius: 260 * s,
+          },
+          fxRng,
+        ),
+    };
+
+    this.shake.pulse(now, SHAKE_MAX_PX); // the first jolt lands on the crash frame itself
+    this.worm.erupt({
+      x: breachX,
+      targetX: crawlerX,
+      groundY,
+      scale: s,
+      minApexY: height * 0.14,
+      hooks,
+    });
   }
 
   private layout(): void {
@@ -233,6 +374,8 @@ export class TremorGame {
     this.crawler.view.position.set(w * 0.46, h * HORIZON_NEAR + 26 * s);
 
     this.sand.layout(w, h, s, this.crawler.view.x, this.crawler.view.y);
+    this.worm.layout(w, h, s, this.crawler.view.y);
+    this.crashFx.layout(w, h);
 
     // Radar: top-left corner widget (plan open question #3 — corner HUD for
     // now). React's HUD column is centered, FPS sits top-right; no overlap.
@@ -249,6 +392,9 @@ export class TremorGame {
     this.destroyed = true;
     window.removeEventListener("keydown", this.onKeyDown);
     this.engineUnsub?.();
+    // Kill any live GSAP timeline — a paused timeline stays referenced by
+    // gsap's global timeline and would leak across StrictMode remounts.
+    this.worm?.abort();
     if (this.initialized) {
       // Textures stay alive: they belong to the shared Assets cache, and a
       // StrictMode remount's second TremorGame renders the same instances.

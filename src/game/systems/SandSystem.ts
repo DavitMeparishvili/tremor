@@ -8,10 +8,12 @@
  * all randomness comes from the round's `fxRng` cosmetic stream — the crash
  * point never appears here.
  *
- * Perf budget (plan §6): the full PARTICLES_STEADY_MAX pool is preallocated
- * once; update() allocates nothing. Only `position` and `color` are dynamic
- * GPU properties — scale/anchor variety is baked in at pool construction so
- * the static vertex buffer never re-uploads.
+ * Perf budget (plan §6): the full PARTICLES_BURST_MAX pool is preallocated
+ * once; update() allocates nothing. Steady-state spawns are gated at
+ * PARTICLES_STEADY_MAX live grains — the headroom above that is reserved for
+ * the M5 eruption's `burst()`. Only `position` and `color` are dynamic GPU
+ * properties — scale/anchor variety is baked in at pool construction so the
+ * static vertex buffer never re-uploads.
  */
 import {
   Graphics,
@@ -21,15 +23,38 @@ import {
   type Renderer,
   type Texture,
 } from "pixi.js";
-import { PARTICLES_STEADY_MAX } from "../../sim/constants";
+import { PARTICLES_BURST_MAX, PARTICLES_STEADY_MAX } from "../../sim/constants";
 import { SHAKE_BLEED_PX } from "../layers";
 
 /** Baseline ambient dust outside RUNNING — the desert is never fully still. */
 export const AMBIENT_SAND_LEVEL = 0.06;
 
-const DUST_TINT = 0xe4bd8d;
-const RIPPLE_TINT = 0xc08a4f;
-const GEYSER_TINT = 0xa56d36;
+export const DUST_TINT = 0xe4bd8d;
+export const RIPPLE_TINT = 0xc08a4f;
+export const GEYSER_TINT = 0xa56d36;
+
+/**
+ * One eruption plume/cloud (M5). Velocities are a cone around `angle`
+ * (radians; -PI/2 is straight up), spawn positions a squashed disc of
+ * `radius`. Caller pre-scales px values to screen scale.
+ */
+export interface BurstSpec {
+  x: number;
+  y: number;
+  count: number;
+  angle: number;
+  /** Cone half-width in radians. */
+  spread: number;
+  speedMin: number;
+  speedMax: number;
+  gravity: number;
+  lifeMinMs: number;
+  lifeMaxMs: number;
+  alphaMin: number;
+  alphaMax: number;
+  tint: number;
+  radius: number;
+}
 
 /** A spawn burst longer than this is a stalled tab, not a frame — don't dump particles. */
 const MAX_SPAWN_DT_MS = 100;
@@ -72,6 +97,7 @@ export class SandSystem {
   private dustAccum = 0;
   private rippleAccum = 0;
   private geyserAccum = 0;
+  private liveCount = 0;
 
   constructor(renderer: Renderer) {
     const texture = makeGrainTexture(renderer);
@@ -82,8 +108,8 @@ export class SandSystem {
       boundsArea: new Rectangle(0, 0, 1, 1), // real bounds set in layout()
     });
 
-    // Preallocate the whole steady-state pool; dead grains sit at alpha 0.
-    for (let i = 0; i < PARTICLES_STEADY_MAX; i++) {
+    // Preallocate the whole pool incl. eruption headroom; dead grains sit at alpha 0.
+    for (let i = 0; i < PARTICLES_BURST_MAX; i++) {
       const particle = new Particle({
         texture,
         anchorX: 0.5,
@@ -171,6 +197,34 @@ export class SandSystem {
       }
     }
 
+    this.integrate(dtMs);
+  }
+
+  /**
+   * Eruption burst (plan M5) — bypasses the steady-state gate and may fill the
+   * pool up to PARTICLES_BURST_MAX. Randomness from `fxRng` only: the burst is
+   * triggered by the crash EVENT, never by the hidden crash point.
+   */
+  burst(spec: BurstSpec, fxRng: () => number): void {
+    for (let n = 0; n < spec.count; n++) {
+      const a = spec.angle + (fxRng() - 0.5) * 2 * spec.spread;
+      const speed = spec.speedMin + fxRng() * (spec.speedMax - spec.speedMin);
+      const r = fxRng() * spec.radius;
+      const ra = fxRng() * Math.PI * 2;
+      this.spawnRaw(
+        spec.x + Math.cos(ra) * r,
+        spec.y + Math.sin(ra) * r * 0.4, // squashed disc — a patch of ground, not a ball
+        Math.cos(a) * speed,
+        Math.sin(a) * speed,
+        spec.gravity,
+        spec.lifeMinMs + fxRng() * (spec.lifeMaxMs - spec.lifeMinMs),
+        spec.alphaMin + fxRng() * (spec.alphaMax - spec.alphaMin),
+        spec.tint,
+      );
+    }
+  }
+
+  private integrate(dtMs: number): void {
     // --- integrate live grains (no allocations) ---
     const dtSec = dtMs / 1000;
     for (let i = 0; i < this.grains.length; i++) {
@@ -182,6 +236,7 @@ export class SandSystem {
         grain.lifeMs = 0;
         particle.alpha = 0;
         this.free.push(i);
+        this.liveCount--;
         continue;
       }
       grain.vy += grain.gravity * dtSec;
@@ -192,7 +247,22 @@ export class SandSystem {
     }
   }
 
+  /** Steady-state spawn — gated so ambient theater never eats the eruption headroom. */
   private spawn(
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    gravity: number,
+    lifeMs: number,
+    alpha: number,
+    tint: number,
+  ): void {
+    if (this.liveCount >= PARTICLES_STEADY_MAX) return; // steady cap — spawn dropped
+    this.spawnRaw(x, y, vx, vy, gravity, lifeMs, alpha, tint);
+  }
+
+  private spawnRaw(
     x: number,
     y: number,
     vx: number,
@@ -204,6 +274,7 @@ export class SandSystem {
   ): void {
     const i = this.free.pop();
     if (i === undefined) return; // pool exhausted — cap respected, spawn dropped
+    this.liveCount++;
     const grain = this.grains[i];
     grain.ageMs = 0;
     grain.lifeMs = lifeMs;

@@ -29,7 +29,10 @@ export const manifest: AssetsManifest = {
     },
     {
       name: "deferred",
-      assets: [{ alias: "wormMaw", src: "worm-maw.svg", data: SVG_DATA }],
+      assets: [
+        { alias: "wormMaw", src: "worm-maw.svg", data: SVG_DATA },
+        { alias: "wormSegment", src: "worm-segment.svg", data: SVG_DATA },
+      ],
     },
   ],
 };
@@ -53,9 +56,15 @@ export function loadBootAssets(): Promise<void> {
 
 let deferredQueued = false;
 
-/** Fire-and-forget; TremorGame calls this when a BETTING phase is first observed. */
+/**
+ * Fire-and-forget; TremorGame calls this when a BETTING phase is first observed.
+ * An active `loadBundle`, not `backgroundLoadBundle`: background loading fetches
+ * passively but does not register the bundle's aliases in the Cache, so the
+ * worm's `Assets.get("wormMaw")` missed at crash time (observed live). This is
+ * still non-blocking — it just downloads eagerly during the betting window.
+ */
 export function backgroundLoadDeferred(): void {
   if (deferredQueued) return;
   deferredQueued = true;
-  Assets.backgroundLoadBundle("deferred");
+  void Assets.loadBundle("deferred");
 }

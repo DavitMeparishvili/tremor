@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <!-- Worm body segment placeholder (M5) — chitin ring seen along the body axis.
+       Key light upper-left per ART_AUDIO_DIRECTION §1; real art swaps in by file. -->
+  <circle cx="80" cy="80" r="70" fill="#2a2027"/>
+  <circle cx="80" cy="80" r="70" fill="none" stroke="#171014" stroke-width="9"/>
+  <circle cx="74" cy="74" r="52" fill="#3a2b31"/>
+  <circle cx="70" cy="70" r="34" fill="#312229"/>
+  <path d="M 28 46 A 62 62 0 0 1 96 16" stroke="#54404a" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M 24 100 A 60 60 0 0 0 92 138" stroke="#140e11" stroke-width="9" fill="none" stroke-linecap="round"/>
+</svg>
