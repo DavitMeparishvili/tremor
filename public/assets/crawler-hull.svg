@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="100" viewBox="0 0 180 100">
+  <!-- Harvester hull, side view facing right. Machine hull #4A4E57, rust accents
+       #A4472A, key light upper-left (highlights top/left, shade bottom/right).
+       Treads and drill arm are separate pieces animated in code (ART doc §2). -->
+  <rect x="18" y="4" width="10" height="32" rx="2" fill="#3A3D44"/>
+  <rect x="34" y="10" width="8" height="26" rx="2" fill="#3A3D44"/>
+  <rect x="18" y="4" width="10" height="4" fill="#A4472A"/>
+  <rect x="34" y="10" width="8" height="3" fill="#A4472A"/>
+  <!-- main hull -->
+  <path d="M8 36 L140 30 L156 44 L158 88 L10 88 Z" fill="#4A4E57"/>
+  <path d="M8 36 L140 30 L142 36 L10 42 Z" fill="#6A707C"/>
+  <rect x="10" y="76" width="148" height="12" fill="#3A3D44"/>
+  <rect x="10" y="52" width="148" height="3" fill="#3A3D44" opacity="0.6"/>
+  <!-- cab -->
+  <path d="M112 12 L150 16 L156 44 L108 40 Z" fill="#565B66"/>
+  <path d="M118 18 L146 21 L149 36 L116 33 Z" fill="#F2C89B" opacity="0.9"/>
+  <path d="M112 12 L150 16 L149 20 L113 16 Z" fill="#6A707C"/>
+  <!-- rust patches, worn edges -->
+  <path d="M60 60 q8 -6 16 0 q6 8 -4 10 q-12 2 -12 -10" fill="#A4472A" opacity="0.55"/>
+  <path d="M120 70 q6 -4 12 0 q4 6 -3 8 q-9 1 -9 -8" fill="#A4472A" opacity="0.45"/>
+  <path d="M10 84 L34 84 L34 88 L10 88 Z" fill="#A4472A" opacity="0.35"/>
+  <!-- front drill-arm mount bracket -->
+  <path d="M156 48 L178 52 L178 66 L158 64 Z" fill="#3A3D44"/>
+  <circle cx="170" cy="58" r="3" fill="#6A707C"/>
+</svg>

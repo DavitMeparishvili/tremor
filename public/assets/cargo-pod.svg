@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="46" viewBox="0 0 32 46">
+  <!-- Cargo pod ejected on cashout — warm glow only (HUD teal is banned in world art). -->
+  <path d="M12 40 L20 40 L16 46 Z" fill="#F2C89B" opacity="0.9"/>
+  <path d="M16 0 C26 0 28 10 28 20 C28 32 24 40 16 40 C8 40 4 32 4 20 C4 10 6 0 16 0 Z" fill="#E0B36A"/>
+  <path d="M4.6 16 L27.4 16 L27.8 22 L4.2 22 Z" fill="#A4472A"/>
+  <path d="M16 0 C10 0 6.5 6 5.5 12 L9.5 12 C10.5 6 12.5 2 16 2 Z" fill="#F2C89B" opacity="0.85"/>
+  <circle cx="16" cy="30" r="4" fill="#3A3D44"/>
+  <circle cx="15" cy="29" r="1.5" fill="#F2C89B" opacity="0.7"/>
+</svg>

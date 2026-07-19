@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="300" viewBox="0 0 1024 300">
+  <!-- Near dune band (sand shadow #8A5A33 base). Seamless-tileable: edge y=110. -->
+  <path d="M0 110 C60 110 120 40 260 56 C390 71 460 170 600 156 C720 144 780 60 900 68 C990 74 1000 110 1024 110 L1024 300 L0 300 Z" fill="#8A5A33"/>
+  <path d="M260 56 C390 71 460 170 600 156 L600 186 C470 196 380 100 260 84 Z" fill="#71451F" opacity="0.85"/>
+  <path d="M900 68 C955 72 990 96 1018 106 L1018 130 C985 120 950 96 900 92 Z" fill="#71451F" opacity="0.85"/>
+  <path d="M120 74 C165 50 215 46 260 56 L260 74 C215 64 170 70 135 88 Z" fill="#A87344" opacity="0.8"/>
+  <g fill="#71451F" opacity="0.5">
+    <circle cx="180" cy="200" r="3"/>
+    <circle cx="420" cy="240" r="4"/>
+    <circle cx="700" cy="215" r="3"/>
+    <circle cx="880" cy="255" r="4"/>
+    <circle cx="90" cy="260" r="3"/>
+  </g>
+</svg>

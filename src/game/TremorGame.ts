@@ -1,20 +1,39 @@
 import {
   Application,
   BitmapText,
-  Graphics,
   Ticker,
   UPDATE_PRIORITY,
 } from "pixi.js";
+import { backgroundLoadDeferred, loadBootAssets } from "../assets/manifest";
 import { SHAKE_MAX_PX } from "../sim/constants";
 import { engine, useTremorStore } from "../state/store";
-import { createLayers, type Layers } from "./layers";
+import { Crawler } from "./entities/Crawler";
+import { Dunes, HORIZON_NEAR } from "./entities/Dunes";
+import { createLayers, type Layers, REFERENCE_HEIGHT } from "./layers";
 import { MultiplierDisplay } from "./systems/MultiplierDisplay";
 
-/** SHAKE_MAX_PX is specified at this reference height; scale with the renderer. */
-const REFERENCE_HEIGHT = 1080;
 const SHAKE_DECAY_MS = 700;
-/** Oversize world-layer fills so max shake never reveals the stage background. */
-const SHAKE_BLEED_PX = SHAKE_MAX_PX * 2;
+
+/** Crawler ground speed while harvesting, px/s at the 1080p reference height. */
+const GROUND_SPEED_PXS = 30;
+
+/**
+ * Day-cycle tint drift (plan M3): the whole `world` container slowly grades
+ * between high-sun white and a deep-dusk multiply over ~9 minutes, so no two
+ * rounds sit in exactly the same light. v8 container tint multiplies down the
+ * subtree; `hud`/`fx` are siblings and stay untouched. Pure function of wall
+ * time — outcome-independent by construction (golden rule #1).
+ */
+const DAY_CYCLE_MS = 540_000;
+const DUSK_TINT = { r: 0xe8, g: 0xbf, b: 0xa4 };
+
+function daylightTint(nowMs: number): number {
+  const t = 0.5 - 0.5 * Math.cos((nowMs / DAY_CYCLE_MS) * Math.PI * 2);
+  const r = Math.round(0xff + (DUSK_TINT.r - 0xff) * t);
+  const g = Math.round(0xff + (DUSK_TINT.g - 0xff) * t);
+  const b = Math.round(0xff + (DUSK_TINT.b - 0xff) * t);
+  return (r << 16) | (g << 8) | b;
+}
 
 /**
  * Owns the Pixi Application and the game world. React mounts it via
@@ -25,17 +44,16 @@ export class TremorGame {
   private readonly app = new Application();
   private layers!: Layers;
 
-  // M0 placeholders — replaced by Dunes/Crawler entities in M3
-  private dunesFar!: Graphics;
-  private dunesMid!: Graphics;
-  private dunesNear!: Graphics;
-  private crawler!: Graphics;
+  private dunes!: Dunes;
+  private crawler!: Crawler;
   private fpsText!: BitmapText;
   /** The real multiplier display (plan M2) — BitmapText, centered, never DOM. */
   private multiplierDisplay!: MultiplierDisplay;
 
   /** 0..1; shake amplitude is trauma², so pulses hit hard and tail off. */
   private trauma = 0;
+  /** Eased current world scroll speed in px/s at screen scale. */
+  private groundSpeed = 0;
   private fpsAccumMs = 0;
   private initialized = false;
   private destroyed = false;
@@ -52,25 +70,22 @@ export class TremorGame {
   async init(host: HTMLElement): Promise<void> {
     await this.app.init({
       resizeTo: host,
-      background: "#cf8f63", // dusk-haze placeholder; real sky gradient in M3
+      background: "#c96b4a", // matches the sky's horizon color while assets load
       antialias: true,
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
     });
     host.appendChild(this.app.canvas);
 
+    await loadBootAssets();
+
     this.layers = createLayers(this.app.stage);
 
-    this.dunesFar = new Graphics({ label: "dunesFar" });
-    this.dunesMid = new Graphics({ label: "dunesMid" });
-    this.dunesNear = new Graphics({ label: "dunesNear" });
-    this.crawler = new Graphics({ label: "crawler" });
-    this.layers.world.addChild(
-      this.dunesFar,
-      this.dunesMid,
-      this.dunesNear,
-      this.crawler,
-    );
+    // SPECS §7 world order: sky, dune layers, then crawler. (worm: M5, sand: M4)
+    this.dunes = new Dunes();
+    this.dunes.addTo(this.layers.world);
+    this.crawler = new Crawler();
+    this.layers.world.addChild(this.crawler.view);
 
     this.fpsText = new BitmapText({
       text: "-- FPS",
@@ -82,11 +97,15 @@ export class TremorGame {
     this.multiplierDisplay = new MultiplierDisplay();
     this.layers.hud.addChild(this.multiplierDisplay.view);
 
-    // Placeholder eruption feedback until the M5 worm timeline exists. Reacts
-    // to the crash EVENT — never anticipates the hidden crash point.
     this.engineUnsub = engine.on((e) => {
+      // Placeholder eruption feedback until the M5 worm timeline exists. Reacts
+      // to the crash EVENT — never anticipates the hidden crash point.
       if (e.type === "crashed") this.triggerShake();
+      if (e.type === "cashedOut") this.crawler.ejectPod(performance.now(), e.slot);
+      if (e.type === "phaseChanged" && e.phase === "betting") backgroundLoadDeferred();
     });
+    // The engine boots inside BETTING, so the phase event may already be behind us.
+    if (useTremorStore.getState().phase === "betting") backgroundLoadDeferred();
 
     this.layout();
     this.app.renderer.on("resize", this.layout, this);
@@ -122,6 +141,16 @@ export class TremorGame {
       amp * Math.sin(now * 0.047 + 2.1),
     );
 
+    // --- desert world (plan M3) ---
+    // The crawler advances only while harvesting; speed eases in/out so phase
+    // changes read as a heavy machine, not a switch.
+    const targetSpeed = state.phase === "running" ? GROUND_SPEED_PXS * scale : 0;
+    this.groundSpeed += (targetSpeed - this.groundSpeed) * Math.min(1, ticker.deltaMS / 400);
+    const scrollPx = (this.groundSpeed * ticker.deltaMS) / 1000;
+    this.dunes.update(now, scrollPx, state.settings.reducedMotion);
+    this.crawler.update(now, state.phase, scrollPx);
+    this.layers.world.tint = daylightTint(now);
+
     // --- the real multiplier display (plan M2) ---
     this.multiplierDisplay.update(state.phase, m);
 
@@ -135,32 +164,14 @@ export class TremorGame {
 
   private layout(): void {
     const { width: w, height: h } = this.app.screen;
-    const pad = SHAKE_BLEED_PX;
-
-    const farTop = h * 0.52;
-    const midTop = h * 0.66;
-    const nearTop = h * 0.8;
-
-    this.dunesFar
-      .clear()
-      .rect(-pad, farTop, w + pad * 2, h - farTop + pad)
-      .fill(0xb9854f);
-    this.dunesMid
-      .clear()
-      .rect(-pad, midTop, w + pad * 2, h - midTop + pad)
-      .fill(0xa06d3d);
-    this.dunesNear
-      .clear()
-      .rect(-pad, nearTop, w + pad * 2, h - nearTop + pad)
-      .fill(0x8a5a33);
-
-    this.crawler.clear();
-    this.crawler.rect(0, 0, 120, 48).fill(0x4a4e57); // hull
-    this.crawler.rect(8, 48, 104, 16).fill(0x33363c); // treads
-    this.crawler.rect(88, 8, 20, 12).fill(0xa4472a); // rust accent
     const s = Math.max(0.6, h / REFERENCE_HEIGHT);
-    this.crawler.scale.set(s);
-    this.crawler.position.set(w * 0.5 - 60 * s, nearTop - 64 * s);
+
+    this.dunes.layout(w, h);
+
+    // Grounded on the near dune band, a touch left of center so the drill's
+    // strike point sits under the multiplier without hiding behind BetPanel.
+    this.crawler.view.scale.set(s);
+    this.crawler.view.position.set(w * 0.46, h * HORIZON_NEAR + 26 * s);
 
     this.fpsText.position.set(w - 12, 10);
     this.multiplierDisplay.layout(w, h);
@@ -172,10 +183,9 @@ export class TremorGame {
     window.removeEventListener("keydown", this.onKeyDown);
     this.engineUnsub?.();
     if (this.initialized) {
-      this.app.destroy(
-        { removeView: true, releaseGlobalResources: true },
-        { children: true, texture: true, textureSource: true },
-      );
+      // Textures stay alive: they belong to the shared Assets cache, and a
+      // StrictMode remount's second TremorGame renders the same instances.
+      this.app.destroy({ removeView: true, releaseGlobalResources: true }, { children: true });
     }
   }
 }

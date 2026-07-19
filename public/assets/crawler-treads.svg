@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="28" viewBox="0 0 36 28">
+  <!-- Tread strip tile — horizontally seamless; code scrolls tilePosition.x so the
+       slats read as track motion (TilingSprite, ART doc §2 piece-based animation). -->
+  <rect width="36" height="28" fill="#2C2F35"/>
+  <rect width="36" height="4" fill="#454A54"/>
+  <rect y="24" width="36" height="4" fill="#1E2025"/>
+  <rect x="3" y="6" width="7" height="18" rx="2" fill="#22242A"/>
+  <rect x="21" y="6" width="7" height="18" rx="2" fill="#22242A"/>
+  <rect x="12" y="10" width="5" height="10" rx="1" fill="#383C44"/>
+  <rect x="30" y="10" width="5" height="10" rx="1" fill="#383C44"/>
+</svg>

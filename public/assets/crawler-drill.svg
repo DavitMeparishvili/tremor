@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="110" viewBox="0 0 40 110">
+  <!-- Vertical harvest drill: housing, piston rod, bit. Code slams it on the
+       THUMP_BPM grid — this art is a single rigid piece. -->
+  <rect x="9" y="0" width="22" height="44" rx="3" fill="#4A4E57"/>
+  <rect x="9" y="0" width="5" height="44" rx="2" fill="#6A707C" opacity="0.8"/>
+  <rect x="9" y="38" width="22" height="6" fill="#3A3D44"/>
+  <rect x="16" y="44" width="8" height="26" fill="#7A8089"/>
+  <rect x="16" y="44" width="3" height="26" fill="#9AA0A8" opacity="0.8"/>
+  <path d="M8 70 L32 70 L20 108 Z" fill="#A4472A"/>
+  <path d="M8 70 L20 70 L20 108 Z" fill="#B85834" opacity="0.8"/>
+  <path d="M11 80 L29 80 M13 88 L27 88 M16 96 L24 96" stroke="#5E2717" stroke-width="2"/>
+</svg>

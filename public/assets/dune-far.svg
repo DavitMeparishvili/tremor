@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="260" viewBox="0 0 1024 260">
+  <!-- Far dune band. Seamless-tileable: edge y=130 with flat slope at x=0 and x=1024.
+       Palette: hazed sand between light #E0B36A and shadow #8A5A33 (aerial perspective).
+       Key light upper-left: shadow faces sit on the right (lee) side of each crest. -->
+  <path d="M0 130 C80 130 140 88 250 96 C360 104 420 150 540 142 C660 134 720 92 830 100 C940 108 970 130 1024 130 L1024 260 L0 260 Z" fill="#CDA06B"/>
+  <path d="M250 96 C360 104 420 150 540 142 L540 160 C430 166 350 122 250 114 Z" fill="#B98A52" opacity="0.75"/>
+  <path d="M830 100 C905 106 945 122 990 128 L990 146 C935 140 890 124 830 118 Z" fill="#B98A52" opacity="0.75"/>
+</svg>

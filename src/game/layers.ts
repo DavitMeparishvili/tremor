@@ -1,4 +1,11 @@
 import { Container } from "pixi.js";
+import { SHAKE_MAX_PX } from "../sim/constants";
+
+/** SHAKE_MAX_PX (and world art in general) is specified at this height; scale with the renderer. */
+export const REFERENCE_HEIGHT = 1080;
+
+/** Oversize world-layer fills by this so max shake never reveals the stage background. */
+export const SHAKE_BLEED_PX = SHAKE_MAX_PX * 2;
 
 /**
  * Layer hierarchy per SPECS.md §7.

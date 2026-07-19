@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 220 220">
+  <!-- Worm maw placeholder — lives in the `deferred` bundle so the M3 background-load
+       path is real; M5 replaces it with the eruption piece set. -->
+  <circle cx="110" cy="110" r="105" fill="#2A2027"/>
+  <circle cx="110" cy="110" r="78" fill="#1A1216"/>
+  <g fill="#D8C9A8">
+    <path d="M110 12 L122 42 L98 42 Z"/>
+    <path d="M110 12 L122 42 L98 42 Z" transform="rotate(45 110 110)"/>
+    <path d="M110 12 L122 42 L98 42 Z" transform="rotate(90 110 110)"/>
+    <path d="M110 12 L122 42 L98 42 Z" transform="rotate(135 110 110)"/>
+    <path d="M110 12 L122 42 L98 42 Z" transform="rotate(180 110 110)"/>
+    <path d="M110 12 L122 42 L98 42 Z" transform="rotate(225 110 110)"/>
+    <path d="M110 12 L122 42 L98 42 Z" transform="rotate(270 110 110)"/>
+    <path d="M110 12 L122 42 L98 42 Z" transform="rotate(315 110 110)"/>
+  </g>
+  <circle cx="110" cy="110" r="30" fill="#0B0709"/>
+</svg>

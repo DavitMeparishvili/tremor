@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="280" viewBox="0 0 1024 280">
+  <!-- Mid dune band. Seamless-tileable: edge y=120, flat slope at both edges. -->
+  <path d="M0 120 C70 120 130 60 260 72 C380 83 440 158 570 148 C690 140 750 70 870 80 C960 88 985 120 1024 120 L1024 280 L0 280 Z" fill="#A9743F"/>
+  <path d="M260 72 C380 83 440 158 570 148 L570 172 C450 178 360 106 260 94 Z" fill="#8F5C2E" opacity="0.8"/>
+  <path d="M870 80 C930 85 975 108 1010 116 L1010 138 C965 130 920 106 870 100 Z" fill="#8F5C2E" opacity="0.8"/>
+  <path d="M130 96 C170 76 215 66 260 72 L260 88 C220 82 175 90 140 106 Z" fill="#C08A50" opacity="0.7"/>
+</svg>
