@@ -5,6 +5,7 @@ import {
   UPDATE_PRIORITY,
 } from "pixi.js";
 import { backgroundLoadDeferred, loadBootAssets } from "../assets/manifest";
+import { AudioDirector } from "../audio/AudioDirector";
 import { SHAKE_MAX_PX } from "../sim/constants";
 import { fxRngForRound } from "../sim/outcome";
 import type { RoundPhase } from "../sim/types";
@@ -84,6 +85,9 @@ export class TremorGame {
   // --- M5 eruption stack ---
   private worm!: Worm;
   private crashFx!: CrashFxSystem;
+
+  // --- M6 audio: the fourth tension consumer (plan §4.4) ---
+  private readonly audio = new AudioDirector(`${import.meta.env.BASE_URL}audio/stems/`);
   /** Wall-time start of the active hit-stop, or null. */
   private hitStopStartMs: number | null = null;
   /**
@@ -165,8 +169,14 @@ export class TremorGame {
     this.engineUnsub = engine.on((e) => {
       // The eruption reacts to the crash EVENT — never anticipates the hidden crash point.
       if (e.type === "crashed") this.beginEruption();
-      if (e.type === "cashedOut") this.crawler.ejectPod(performance.now(), e.slot);
-      if (e.type === "phaseChanged" && e.phase === "betting") backgroundLoadDeferred();
+      if (e.type === "cashedOut") {
+        this.crawler.ejectPod(performance.now(), e.slot);
+        this.audio.podLaunch();
+      }
+      if (e.type === "phaseChanged" && e.phase === "betting") {
+        backgroundLoadDeferred();
+        this.audio.preload();
+      }
       if (e.type === "roundStarted") {
         // Reseed the cosmetic stream from the round spec (SPECS §4) and wipe
         // the scope — every round's theater noise is its own replayable stream.
@@ -176,7 +186,10 @@ export class TremorGame {
       }
     });
     // The engine boots inside BETTING, so the phase event may already be behind us.
-    if (useTremorStore.getState().phase === "betting") backgroundLoadDeferred();
+    if (useTremorStore.getState().phase === "betting") {
+      backgroundLoadDeferred();
+      this.audio.preload();
+    }
 
     this.layout();
     this.app.renderer.on("resize", this.layout, this);
@@ -235,7 +248,11 @@ export class TremorGame {
       this.thumpPhase = (prev + ticker.deltaMS / tension.thumpIntervalMs) % 1;
       const crossedImpact =
         prev < THUMP_IMPACT_P && (this.thumpPhase >= THUMP_IMPACT_P || this.thumpPhase < prev);
-      if (crossedImpact) this.shake.pulse(now, tension.shakePeak);
+      if (crossedImpact) {
+        this.shake.pulse(now, tension.shakePeak);
+        // Same crossing that fires the shake pulse — heard hit locks to felt hit.
+        this.audio.thump(tension.intensity);
+      }
       thumpPhase = this.thumpPhase;
     }
 
@@ -270,6 +287,9 @@ export class TremorGame {
     this.worm.advance(ticker.deltaMS);
     this.crashFx.update(ticker.elapsedMS);
 
+    // --- audio (plan M6): unscaled time — the hit-stop slows the world, not the mix ---
+    this.audio.update(now, ticker.elapsedMS, tension, state.phase, state.settings.muted);
+
     // --- the real multiplier display (plan M2) ---
     this.multiplierDisplay.update(state.phase, m);
 
@@ -295,6 +315,10 @@ export class TremorGame {
     const breachX = crawlerX + 200 * s;
     const fxRng = this.fxRng;
     const reducedMotion = useTremorStore.getState().settings.reducedMotion;
+
+    // Pre-roar dropout (plan M6): stems duck to near-silence NOW; the roar
+    // one-shot fires at the breach beat ~220ms later, landing against quiet.
+    this.audio.crashDropout(now);
 
     const hooks: EruptionHooks = {
       pulse: (ampPx) => this.shake.pulse(performance.now(), ampPx),
@@ -322,6 +346,7 @@ export class TremorGame {
         );
         this.crashFx.triggerFlash(reducedMotion ? 0.25 : 0.9);
         this.crashFx.triggerShockwave(breachX, groundY, s);
+        this.audio.eruptionRoar();
         this.shake.pulse(performance.now(), SHAKE_MAX_PX);
         if (!reducedMotion) this.hitStopStartMs = performance.now();
       },
@@ -392,6 +417,7 @@ export class TremorGame {
     this.destroyed = true;
     window.removeEventListener("keydown", this.onKeyDown);
     this.engineUnsub?.();
+    this.audio.destroy();
     // Kill any live GSAP timeline — a paused timeline stays referenced by
     // gsap's global timeline and would leak across StrictMode remounts.
     this.worm?.abort();

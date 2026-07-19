@@ -176,6 +176,6 @@ app.stage
 - **Naming:** entities `PascalCase.ts` (class per file); systems end in `System.ts` except `TensionDirector`/`AudioDirector`; sim files lowercase.
 - **Events over imports:** Pixi systems react to `EngineEvent`s and store subscriptions; systems never call each other directly (TensionDirector output is the one shared read).
 - **Assets:** manifest in `src/assets/manifest.ts`; bundles `boot` (dunes, crawler, UI atlas, fonts) and `deferred` (worm, audio stems, eruption FX) — `deferred` loads during the first BETTING phase.
-- **Audio files:** `audio/stems/<stemName>.webm` + `.mp3` fallback, loops crossfaded seamless, all rhythmic stems at `THUMP_BPM`.
+- **Audio files:** `public/audio/stems/<stemName>.webm` + `.mp3` fallback, loops crossfaded seamless, all rhythmic stems at `THUMP_BPM`. **Placeholder tier (current):** code-generated `.wav` stems from `scripts/generate-stems.mjs` (`npm run gen:stems`) — deterministic synthesis, seamless loops by construction. Real stems replace the files 1:1 and switch the `src` extensions in `audio/AudioDirector.ts`. Howler loads them outside the Pixi `Assets` bundles; `AudioDirector.preload()` fires at the same first-BETTING moment as the `deferred` bundle. One-shots beyond the stem list: `thump`, `podLaunch`, `eruption`.
 - **Tests:** everything in `sim/` has vitest coverage (distribution sanity, seed-replay determinism, phase timing, cashout math, tie-break rule) plus the §6 purity test. `game/` and `ui/` are verified by playing.
 - **TypeScript:** `strict: true`; no `any` in `sim/` or contract surfaces.

@@ -1,5 +1,6 @@
 import { BetPanel } from "./ui/BetPanel";
 import { GameCanvas } from "./ui/GameCanvas";
+import { MuteToggle } from "./ui/MuteToggle";
 import { ResultsToast } from "./ui/ResultsToast";
 import { RoundHistory } from "./ui/RoundHistory";
 import { RoundStatus } from "./ui/RoundStatus";
@@ -16,6 +17,11 @@ export default function App() {
         </span>
         <RoundStatus />
         <RoundHistory />
+      </div>
+
+      {/* Below the Pixi FPS readout, which owns the very corner */}
+      <div className="absolute right-2 top-8">
+        <MuteToggle />
       </div>
 
       <ResultsToast />
