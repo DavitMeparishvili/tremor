@@ -35,3 +35,15 @@ export const PARTICLES_BURST_MAX = 8000;
 
 /** Rounds kept for the history bar. */
 export const HISTORY_LENGTH = 20;
+
+/** Demo wallet credits; client-side until M8 moves the wallet server-side. */
+export const STARTING_BALANCE = 1000;
+
+/** Per slot. */
+export const MIN_BET = 1;
+
+/** Per slot. */
+export const MAX_BET = 1000;
+
+/** Lowest accepted auto-cashout target. */
+export const AUTO_CASHOUT_MIN = 1.01;

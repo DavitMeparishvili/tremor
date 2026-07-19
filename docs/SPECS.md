@@ -22,6 +22,10 @@ Single source — no magic numbers in systems.
 | `PARTICLES_STEADY_MAX` | `3000` | APEX band |
 | `PARTICLES_BURST_MAX` | `8000` | eruption only |
 | `HISTORY_LENGTH` | `20` | rounds kept for history bar |
+| `STARTING_BALANCE` | `1000` | demo wallet credits; client-side until M8 |
+| `MIN_BET` | `1` | per slot |
+| `MAX_BET` | `1000` | per slot |
+| `AUTO_CASHOUT_MIN` | `1.01` | lowest accepted auto-cashout target |
 
 ## 2. Core sim types (`sim/types.ts`)
 
@@ -68,6 +72,10 @@ export interface TremorEngine {
   tick(nowMs: number): void;
   /** Pure read; valid only during "running", else returns last/1.00. */
   currentMultiplier(): number;
+  /** Wallet snapshot; the demo wallet lives in the engine until M8 moves it server-side. */
+  balance(): number;
+  /** Cloned snapshots — the store mirrors engine state from these on events. */
+  bets(): [BetSlot, BetSlot];
   placeBet(slot: 0 | 1, amount: number, autoCashout: number | null): void;
   requestCashout(slot: 0 | 1): void;
   on(listener: (e: EngineEvent) => void): () => void;   // returns unsubscribe
@@ -78,6 +86,9 @@ Rules the engine guarantees:
 - No `setTimeout`/`setInterval` — every transition derives from `tick(nowMs)` timestamps, so a throttled tab fast-forwards correctly on the next tick.
 - `sim/` imports nothing from `pixi.js`, `react`, or `state/` — pure TS, unit-testable headless.
 - Auto-cashout resolves in `tick` *before* the crash check when both trigger in the same frame at the same multiplier (player-favorable tie-break, matches genre convention).
+- Auto-cashout settles at its target multiplier; manual cashout settles at the current multiplier floored to 2 decimals, never above the crash point. A rejected `requestCashout` (provider authority says no) busts the bet.
+- Re-placing a bet on an occupied slot during `"betting"` adjusts it: refund the old stake, then charge the new.
+- Phase transitions fire at *nominal* boundary timestamps (not tick-arrival times), so hidden-tab fast-forwards never drift the round cadence.
 
 ## 4. Outcome provider (`sim/outcome.ts`)
 

@@ -12,8 +12,11 @@ export default function App() {
         </span>
       </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-2 text-center text-xs text-white/40">
-        press <kbd className="rounded border border-white/20 px-1">S</kbd> to
-        test screen shake
+        <kbd className="rounded border border-white/20 px-1">B</kbd> bet 10 ·{" "}
+        <kbd className="rounded border border-white/20 px-1">A</kbd> bet 10
+        (auto 2x) · <kbd className="rounded border border-white/20 px-1">C</kbd>{" "}
+        cash out · <kbd className="rounded border border-white/20 px-1">S</kbd>{" "}
+        shake
       </div>
     </div>
   );
