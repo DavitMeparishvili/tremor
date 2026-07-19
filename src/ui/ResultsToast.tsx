@@ -16,6 +16,12 @@ export function ResultsToast() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const prevRef = useRef<[BetSlot, BetSlot] | null>(null);
   const idRef = useRef(0);
+  const timersRef = useRef<number[]>([]);
+
+  // Timers live across bets changes — clearing them in the diff effect's
+  // cleanup would cancel dismissal on every bet/phase update, leaving toasts
+  // stuck on screen forever. Only unmount clears them.
+  useEffect(() => () => timersRef.current.forEach(window.clearTimeout), []);
 
   useEffect(() => {
     const prev = prevRef.current;
@@ -41,17 +47,21 @@ export function ResultsToast() {
     });
     if (additions.length === 0) return;
 
-    setToasts((t) => [...t, ...additions]);
-    const timers = additions.map((toast) =>
-      window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== toast.id)), TOAST_MS),
+    // Cap at the 2 most recent (one per slot): stale results would otherwise
+    // pile up over the play area on small screens. Timers for evicted toasts
+    // fire harmlessly — their id is already gone from the list.
+    setToasts((t) => [...t, ...additions].slice(-2));
+    timersRef.current.push(
+      ...additions.map((toast) =>
+        window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== toast.id)), TOAST_MS),
+      ),
     );
-    return () => timers.forEach(window.clearTimeout);
   }, [bets]);
 
   if (toasts.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-24 flex flex-col items-center gap-1">
+    <div className="pointer-events-none flex flex-col items-center gap-1">
       {toasts.map((toast) => (
         <div
           key={toast.id}

@@ -28,9 +28,10 @@ export default function App() {
         <SettingsModal />
       </div>
 
-      <ResultsToast />
-
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      {/* Toasts sit directly above the bet panel — near the slots they report
+          on, and never over the Pixi multiplier (which owns the upper canvas). */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <ResultsToast />
         <div className="pointer-events-auto w-full max-w-2xl">
           <BetPanel />
         </div>
