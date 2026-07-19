@@ -173,6 +173,7 @@ export class TremorGame {
         this.crawler.ejectPod(performance.now(), e.slot);
         this.audio.podLaunch();
       }
+      if (e.type === "betAccepted") this.audio.betPlaced();
       if (e.type === "phaseChanged" && e.phase === "betting") {
         backgroundLoadDeferred();
         this.audio.preload();

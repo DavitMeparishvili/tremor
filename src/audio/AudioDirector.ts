@@ -45,6 +45,7 @@ const MASTER_VOLUME = 0.9;
 const THUMP_BASE_VOL = 0.3;
 const THUMP_INTENSITY_VOL = 0.5;
 const POD_LAUNCH_VOL = 0.55;
+const BET_LOCK_VOL = 0.5;
 const ROAR_VOL = 0.95;
 
 interface LoopState {
@@ -57,6 +58,7 @@ export class AudioDirector {
   private readonly loops = new Map<StemName, LoopState>();
   private readonly thumpHowl: Howl;
   private readonly podHowl: Howl;
+  private readonly betHowl: Howl;
   private readonly roarHowl: Howl;
   private preloaded = false;
   private duckUntil = -Infinity;
@@ -76,6 +78,7 @@ export class AudioDirector {
     }
     this.thumpHowl = new Howl({ src: [`${basePath}thump.wav`], preload: false });
     this.podHowl = new Howl({ src: [`${basePath}podLaunch.wav`], preload: false });
+    this.betHowl = new Howl({ src: [`${basePath}betLock.wav`], preload: false });
     this.roarHowl = new Howl({ src: [`${basePath}eruption.wav`], preload: false });
   }
 
@@ -96,6 +99,7 @@ export class AudioDirector {
     }
     this.thumpHowl.load();
     this.podHowl.load();
+    this.betHowl.load();
     this.roarHowl.load();
   }
 
@@ -157,6 +161,13 @@ export class AudioDirector {
     this.podHowl.volume(POD_LAUNCH_VOL, id);
   }
 
+  /** Bet-accepted confirm — the stake clamps onto the crawler. Fires on betAccepted. */
+  betPlaced(): void {
+    if (!this.preloaded) return;
+    const id = this.betHowl.play();
+    this.betHowl.volume(BET_LOCK_VOL, id);
+  }
+
   /** Crash event: start the pre-roar dropout. The roar itself waits for the breach. */
   crashDropout(nowMs: number): void {
     this.duckUntil = nowMs + DUCK_HOLD_MS;
@@ -174,6 +185,7 @@ export class AudioDirector {
     for (const { howl } of this.loops.values()) howl.unload();
     this.thumpHowl.unload();
     this.podHowl.unload();
+    this.betHowl.unload();
     this.roarHowl.unload();
   }
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { chipRateFor, chipTick } from "../audio/uiSfx";
 import { AUTO_CASHOUT_MIN, MAX_BET, MIN_BET } from "../sim/constants";
 import type { BetSlot } from "../sim/types";
 import { useTremorStore } from "../state/store";
@@ -97,7 +98,10 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
                 key={chip}
                 type="button"
                 disabled={!editable}
-                onClick={() => setAmount(clampAmount(chip))}
+                onClick={() => {
+                  setAmount(clampAmount(chip));
+                  chipTick(chipRateFor(chip));
+                }}
                 className="rounded bg-white/10 px-2 py-0.5 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
               >
                 {chip}
@@ -106,7 +110,10 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
             <button
               type="button"
               disabled={!editable}
-              onClick={() => setAmount((a) => clampAmount(a / 2))}
+              onClick={() => {
+                setAmount((a) => clampAmount(a / 2));
+                chipTick(0.92); // halving ticks down…
+              }}
               className="rounded bg-white/10 px-2 py-0.5 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
             >
               1/2
@@ -114,7 +121,10 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
             <button
               type="button"
               disabled={!editable}
-              onClick={() => setAmount((a) => clampAmount(a * 2))}
+              onClick={() => {
+                setAmount((a) => clampAmount(a * 2));
+                chipTick(1.12); // …doubling ticks up
+              }}
               className="rounded bg-white/10 px-2 py-0.5 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
             >
               2x

@@ -225,6 +225,49 @@ mkdirSync(OUT_DIR, { recursive: true });
   writeWav("podLaunch.wav", normalize(x, 0.85));
 }
 
+// ---- betLock.wav — bet-accepted confirm: cargo clamp + rising two-note chirp
+// The fiction: your stake latches onto the crawler. A short mechanical clunk
+// grounds it; the ascending pings make it catchy without reading as a "win".
+{
+  const rng = mulberry32(606);
+  const x = buffer(0.42);
+  // Clamp clunk: quick pitch-falling thud + metal tick.
+  kick(x, 0, 130, 62, 0.045, 0.85);
+  const tickN = Math.round(0.012 * SR);
+  for (let i = 0; i < tickN; i++) {
+    x[i] += (rng() * 2 - 1) * Math.exp(-(i / SR) / 0.004) * 0.45;
+  }
+  // Two ascending pings, slightly detuned pairs for shimmer.
+  const ping = (at, f, gain) => {
+    const start = Math.round(at * SR);
+    for (let i = 0; start + i < x.length; i++) {
+      const t = i / SR;
+      const env = Math.min(t / 0.004, 1) * Math.exp(-t / 0.07);
+      x[start + i] +=
+        (Math.sin(TWO_PI * f * t) + 0.6 * Math.sin(TWO_PI * f * 1.007 * t)) * env * gain;
+    }
+  };
+  ping(0.05, 784, 0.4); // G5
+  ping(0.14, 1175, 0.45); // D6
+  writeWav("betLock.wav", normalize(x, 0.85));
+}
+
+// ---- chipTick.wav — chip-select UI tick; played at varying rates ----------
+// A crisp tick: noise transient + bright ping + faint low body. BetPanel bends
+// the playback rate so heavier stakes tick lower.
+{
+  const rng = mulberry32(707);
+  const x = buffer(0.12);
+  for (let i = 0; i < x.length; i++) {
+    const t = i / SR;
+    let v = Math.sin(TWO_PI * 1050 * t) * Math.exp(-t / 0.03) * 0.7;
+    v += Math.sin(TWO_PI * 240 * t) * Math.exp(-t / 0.045) * 0.35;
+    if (t < 0.004) v += (rng() * 2 - 1) * Math.exp(-t / 0.0015) * 0.6;
+    x[i] = v;
+  }
+  writeWav("chipTick.wav", normalize(x, 0.8));
+}
+
 // ---- eruption.wav — the roar: sub drop + growl-modulated roar + grit -------
 {
   const rng = mulberry32(505);
