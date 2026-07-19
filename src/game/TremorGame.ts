@@ -53,6 +53,15 @@ const HIT_STOP_RAMP_MS = 220;
 /** Crawler fade-in during SETTLING after being swallowed (a fresh unit deploys). */
 const CRAWLER_RESPAWN_MS = 700;
 
+/**
+ * Visibility hardening (plan M7): the engine fast-forwards through missed
+ * transitions by construction, but the THEATER must not replay them — a crash
+ * that happened while the tab was hidden is old news, not a spectacle. A tick
+ * arriving after a gap longer than this is treated as a fast-forward: events
+ * it fires get the outcome (crawler gone, phase shown) without the show.
+ */
+const STALE_TICK_GAP_MS = 1000;
+
 function daylightTint(nowMs: number): number {
   const t = 0.5 - 0.5 * Math.cos((nowMs / DAY_CYCLE_MS) * Math.PI * 2);
   const r = Math.round(0xff + (DUSK_TINT.r - 0xff) * t);
@@ -113,6 +122,24 @@ export class TremorGame {
   private initialized = false;
   private destroyed = false;
   private engineUnsub: (() => void) | null = null;
+  /** Wall time of the previous update tick; null before the first. */
+  private lastTickMs: number | null = null;
+  /** True while the current engine.tick is a fast-forward (hidden tab / long stall). */
+  private fastForwarding = false;
+
+  private readonly onVisibilityChange = (): void => {
+    // Silence stems while hidden — rAF (and every volume ramp) is frozen there.
+    this.audio.setBackgrounded(document.hidden);
+    if (!document.hidden) {
+      // Fast-forward the sim NOW rather than on the next rAF, with theater
+      // suppression up: a crash missed while hidden lands as state, not show.
+      const now = performance.now();
+      this.fastForwarding = true;
+      engine.tick(now);
+      this.fastForwarding = false;
+      this.lastTickMs = now;
+    }
+  };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     // Ignore keystrokes typed into BetPanel inputs — only bare canvas shortcuts here.
@@ -132,6 +159,9 @@ export class TremorGame {
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
     });
+    // From here the Application is real: even if a later init step throws
+    // (asset load, audio), destroy() must tear it down and detach the canvas.
+    this.initialized = true;
     host.appendChild(this.app.canvas);
 
     await loadBootAssets();
@@ -198,7 +228,7 @@ export class TremorGame {
     this.app.ticker.add(this.update, this, UPDATE_PRIORITY.HIGH);
 
     window.addEventListener("keydown", this.onKeyDown);
-    this.initialized = true;
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
   }
 
   private update(ticker: Ticker): void {
@@ -219,7 +249,14 @@ export class TremorGame {
     }
 
     // --- sim first (plan §3.3): engine advances, store gets the transient m ---
+    // A tick after a long gap (hidden/throttled tab) is a fast-forward: the
+    // engine catches up through every missed transition, but crash events it
+    // fires must not replay the eruption spectacle (see beginEruption).
+    this.fastForwarding =
+      document.hidden || (this.lastTickMs !== null && now - this.lastTickMs > STALE_TICK_GAP_MS);
+    this.lastTickMs = now;
     engine.tick(now);
+    this.fastForwarding = false;
     const m = engine.currentMultiplier();
     useTremorStore.setState({ multiplier: m });
     const state = useTremorStore.getState();
@@ -308,6 +345,15 @@ export class TremorGame {
    * is `fxRng` (cosmetic stream); everything reacts to the already-fired crash.
    */
   private beginEruption(): void {
+    // Stale crash (tab was hidden / rAF stalled): land the outcome — crawler
+    // swallowed, phase already shown by MultiplierDisplay — but skip the show.
+    // The dropout, timeline, hit-stop and roar are all "now" theater.
+    if (this.fastForwarding) {
+      this.worm.abort();
+      this.crawler.view.visible = false;
+      return;
+    }
+
     const now = performance.now();
     const { height } = this.app.screen;
     const s = Math.max(0.5, height / REFERENCE_HEIGHT);
@@ -391,32 +437,43 @@ export class TremorGame {
   private layout(): void {
     const { width: w, height: h } = this.app.screen;
     const s = Math.max(0.6, h / REFERENCE_HEIGHT);
+    const narrow = w < 640;
 
-    this.dunes.layout(w, h);
+    // Portrait (M7 mobile pass): the DOM bet panel covers the bottom of the
+    // screen, so the world composes into the band above it — otherwise the
+    // crawler drills away invisibly behind the panel.
+    const playH = h > w ? h - Math.min(h * 0.4, 360) : h;
+
+    this.dunes.layout(w, h, playH);
 
     // Grounded on the near dune band, a touch left of center so the drill's
     // strike point sits under the multiplier without hiding behind BetPanel.
     this.crawler.view.scale.set(s);
-    this.crawler.view.position.set(w * 0.46, h * HORIZON_NEAR + 26 * s);
+    this.crawler.view.position.set(w * 0.46, playH * HORIZON_NEAR + 26 * s);
 
     this.sand.layout(w, h, s, this.crawler.view.x, this.crawler.view.y);
     this.worm.layout(w, h, s, this.crawler.view.y);
     this.crashFx.layout(w, h);
 
     // Radar: top-left corner widget (plan open question #3 — corner HUD for
-    // now). React's HUD column is centered, FPS sits top-right; no overlap.
-    const radarScale = Math.max(0.55, Math.min(1, h / REFERENCE_HEIGHT));
+    // now). Narrow screens shrink it (width-driven scale) and drop it below
+    // the DOM banner row; desktop keeps it in the very corner.
+    const radarScale = Math.max(0.45, Math.min(1, h / REFERENCE_HEIGHT, w / 900));
     const radarMargin = 14 + (RADAR_RADIUS + 4) * radarScale;
-    this.radar.layout(radarMargin, radarMargin, radarScale);
+    const radarY = narrow ? 40 + (RADAR_RADIUS + 4) * radarScale : radarMargin;
+    this.radar.layout(radarMargin, radarY, radarScale);
 
-    this.fpsText.position.set(w - 12, 10);
-    this.multiplierDisplay.layout(w, h);
+    // FPS: top-right corner on desktop; below the DOM mute/settings buttons
+    // on narrow screens, where the corner row is already full.
+    this.fpsText.position.set(w - 12, narrow ? 62 : 10);
+    this.multiplierDisplay.layout(w, playH);
   }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
     window.removeEventListener("keydown", this.onKeyDown);
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.engineUnsub?.();
     this.audio.destroy();
     // Kill any live GSAP timeline — a paused timeline stays referenced by

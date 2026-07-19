@@ -73,7 +73,12 @@ export class Dunes {
     world.addChild(this.sky, ...this.layers.map((l) => l.root));
   }
 
-  layout(width: number, height: number): void {
+  /**
+   * @param playHeight height available for the composition (M7 mobile pass):
+   * on portrait the DOM bet panel covers the bottom of the screen, so horizons
+   * are placed within this band while fills still extend to the real bottom.
+   */
+  layout(width: number, height: number, playHeight: number = height): void {
     const pad = SHAKE_BLEED_PX;
     const scale = Math.max(0.5, height / REFERENCE_HEIGHT);
 
@@ -87,11 +92,11 @@ export class Dunes {
     });
     this.skyFill
       .clear()
-      .rect(-pad, -pad, width + pad * 2, height * HORIZON_FAR + pad + 40)
+      .rect(-pad, -pad, width + pad * 2, playHeight * HORIZON_FAR + pad + 40)
       .fill(skyGradient);
 
     // Low hot sun with a wide halo, sitting just above the far horizon.
-    const sunR = height * 0.085;
+    const sunR = playHeight * 0.085;
     const sunGradient = new FillGradient({
       type: "radial",
       colorStops: [
@@ -102,7 +107,7 @@ export class Dunes {
     });
     this.sun
       .clear()
-      .circle(width * 0.72, height * 0.45, sunR * 2.2)
+      .circle(width * 0.72, playHeight * 0.45, sunR * 2.2)
       .fill(sunGradient);
 
     // Heat-shimmer haze band straddling the far horizon; update() breathes its alpha.
@@ -116,12 +121,12 @@ export class Dunes {
     });
     this.haze
       .clear()
-      .rect(-pad, height * HORIZON_FAR - height * 0.035, width + pad * 2, height * 0.07)
+      .rect(-pad, playHeight * HORIZON_FAR - playHeight * 0.035, width + pad * 2, playHeight * 0.07)
       .fill(hazeGradient);
     this.haze.alpha = 0.07;
 
     for (const { spec, root, ridge, skirt } of this.layers) {
-      const horizonY = height * spec.horizon;
+      const horizonY = playHeight * spec.horizon;
       root.position.set(0, horizonY - spec.edgeY * scale);
       ridge.position.set(-pad, 0);
       ridge.width = width + pad * 2;

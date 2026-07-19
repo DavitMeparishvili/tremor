@@ -62,7 +62,10 @@ export class AudioDirector {
   private readonly roarHowl: Howl;
   private preloaded = false;
   private duckUntil = -Infinity;
-  private muted: boolean | null = null;
+  private userMuted = false;
+  private backgrounded = false;
+  /** What Howler.mute currently holds — userMuted OR backgrounded. */
+  private appliedMute: boolean | null = null;
   private thumpCount = 0;
 
   /**
@@ -114,10 +117,8 @@ export class AudioDirector {
     phase: RoundPhase,
     muted: boolean,
   ): void {
-    if (muted !== this.muted) {
-      this.muted = muted;
-      Howler.mute(muted);
-    }
+    this.userMuted = muted;
+    this.applyMute();
     if (!this.preloaded) return;
 
     const ducking = nowMs < this.duckUntil;
@@ -138,6 +139,24 @@ export class AudioDirector {
         stem.vol += step;
         stem.howl.volume(stem.vol);
       }
+    }
+  }
+
+  /**
+   * Hidden-tab handling (M7): Howler keeps Web Audio running while rAF — and
+   * with it every volume ramp — is frozen, so a hidden tab would drone the
+   * last-heard mix indefinitely. TremorGame flips this from `visibilitychange`.
+   */
+  setBackgrounded(hidden: boolean): void {
+    this.backgrounded = hidden;
+    this.applyMute();
+  }
+
+  private applyMute(): void {
+    const target = this.userMuted || this.backgrounded;
+    if (target !== this.appliedMute) {
+      this.appliedMute = target;
+      Howler.mute(target);
     }
   }
 

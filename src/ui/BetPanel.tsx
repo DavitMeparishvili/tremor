@@ -71,25 +71,28 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
 
       {showInputs && (
         <>
+          {/* 16px font on mobile — anything smaller makes iOS zoom the page on focus */}
           <div className="flex items-center gap-1">
             <input
               type="number"
+              inputMode="numeric"
               min={MIN_BET}
               max={MAX_BET}
               value={amount}
               disabled={!editable}
               onChange={(e) => setAmount(clampAmount(Number(e.target.value)))}
-              className="w-20 rounded bg-white/10 px-2 py-1 text-sm text-white disabled:opacity-40"
+              className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1 text-base text-white disabled:opacity-40 sm:w-20 sm:flex-none sm:text-sm"
             />
             <input
               type="number"
+              inputMode="decimal"
               placeholder="auto x"
               step={0.01}
               min={AUTO_CASHOUT_MIN}
               value={autoInput}
               disabled={!editable}
               onChange={(e) => setAutoInput(e.target.value)}
-              className="w-20 rounded bg-white/10 px-2 py-1 text-sm text-white placeholder:text-white/30 disabled:opacity-40"
+              className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1 text-base text-white placeholder:text-white/30 disabled:opacity-40 sm:w-20 sm:flex-none sm:text-sm"
             />
           </div>
           <div className="flex flex-wrap gap-1">
@@ -102,7 +105,7 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
                   setAmount(clampAmount(chip));
                   chipTick(chipRateFor(chip));
                 }}
-                className="rounded bg-white/10 px-2 py-0.5 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
+                className="touch-manipulation rounded bg-white/10 px-2 py-1 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
               >
                 {chip}
               </button>
@@ -114,7 +117,7 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
                 setAmount((a) => clampAmount(a / 2));
                 chipTick(0.92); // halving ticks down…
               }}
-              className="rounded bg-white/10 px-2 py-0.5 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
+              className="touch-manipulation rounded bg-white/10 px-2 py-1 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
             >
               1/2
             </button>
@@ -125,7 +128,7 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
                 setAmount((a) => clampAmount(a * 2));
                 chipTick(1.12); // …doubling ticks up
               }}
-              className="rounded bg-white/10 px-2 py-0.5 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
+              className="touch-manipulation rounded bg-white/10 px-2 py-1 text-xs text-white/80 hover:bg-white/20 disabled:opacity-40"
             >
               2x
             </button>
@@ -134,7 +137,7 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
             type="button"
             disabled={!canSubmit}
             onClick={submit}
-            className="rounded bg-[#35E0C8] py-1.5 text-sm font-bold text-black disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30"
+            className="touch-manipulation rounded bg-[#35E0C8] py-1.5 text-sm font-bold text-black disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30"
           >
             {bet.state === "placed" ? `Update Bet ${amount}` : `Place Bet ${amount}`}
           </button>
@@ -146,7 +149,7 @@ function BetSlotPanel({ slot }: { slot: 0 | 1 }) {
           type="button"
           disabled={bet.state !== "live"}
           onClick={() => cashout(slot)}
-          className="rounded bg-[#FF4433] py-2 text-sm font-bold text-white disabled:opacity-60"
+          className="touch-manipulation rounded bg-[#FF4433] py-2 text-sm font-bold text-white disabled:opacity-60"
         >
           <span ref={cashoutRef}>CASH OUT</span>
         </button>

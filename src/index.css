@@ -6,10 +6,18 @@ body,
   height: 100%;
 }
 
+/* Portrait-first (M7): dvh tracks the collapsing mobile URL bar where supported. */
+#root {
+  height: 100dvh;
+}
+
 body {
   margin: 0;
   overflow: hidden;
   background: #0d0a08;
   color: #e7e2da;
   font-family: Inter, system-ui, sans-serif;
+  /* No pull-to-refresh / rubber-banding under the game, no tap flash on HUD buttons. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }

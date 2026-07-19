@@ -48,10 +48,27 @@ export class MultiplierDisplay {
     });
   }
 
+  private baseScale = 1;
+  private maxWidth = Number.POSITIVE_INFINITY;
+
   /** Recomputes position/scale on resize; keeps it centered and legible at any canvas size. */
   layout(width: number, height: number): void {
-    this.view.scale.set(Math.max(0.3, Math.min(1, width / 640)));
+    this.baseScale = Math.max(0.3, Math.min(1, width / 640));
+    this.maxWidth = width * 0.92;
     this.view.position.set(width / 2, height * 0.36);
+    this.fit();
+  }
+
+  /**
+   * Shrink-to-fit (M7 mobile pass): the "CRASHED @ Xx" string is much wider
+   * than "1.00x" and would spill off portrait screens at the base scale.
+   */
+  private fit(): void {
+    this.view.scale.set(this.baseScale);
+    const w = this.view.width;
+    if (w > this.maxWidth && w > 0) {
+      this.view.scale.set((this.baseScale * this.maxWidth) / w);
+    }
   }
 
   update(phase: RoundPhase, multiplier: number): void {
@@ -78,5 +95,6 @@ export class MultiplierDisplay {
         this.view.alpha = 1;
         break;
     }
+    this.fit();
   }
 }

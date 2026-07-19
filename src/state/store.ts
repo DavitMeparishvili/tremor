@@ -98,6 +98,25 @@ function sessionSeed(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Settings persistence (M7) — key documented in SPECS §8. */
+const SETTINGS_STORAGE_KEY = "tremor.settings.v1";
+
+function loadStoredSettings(): Partial<TremorStore["settings"]> {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    const out: Partial<TremorStore["settings"]> = {};
+    const record = parsed as Record<string, unknown>;
+    if (typeof record.reducedMotion === "boolean") out.reducedMotion = record.reducedMotion;
+    if (typeof record.muted === "boolean") out.muted = record.muted;
+    return out;
+  } catch {
+    return {}; // storage blocked (private mode, headless) — session-only settings
+  }
+}
+
 const prefersReducedMotion =
   typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -109,5 +128,18 @@ export const engine = createEngine({
 });
 
 export const useTremorStore = createTremorStore(engine, {
+  // OS-level preference seeds the default; an explicit stored choice wins.
   reducedMotion: prefersReducedMotion,
+  ...loadStoredSettings(),
 });
+
+useTremorStore.subscribe(
+  (s) => s.settings,
+  (settings) => {
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    } catch {
+      // storage unavailable — settings simply don't persist
+    }
+  },
+);
